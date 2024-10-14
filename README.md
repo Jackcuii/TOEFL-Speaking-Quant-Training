@@ -14,5 +14,6 @@ I put the whole dialog with Copilot in `/dialog`.
 
 This practice shows that LLM reforms our frontend GUI development. But there is still a long way to go in code prompt-engineering. (both for me and GPT)
 ## Update Log
-v0.1 - a demo, no real content
-
+v0.1 - a demo, no real content  
+v0.2 - beautify   
+v0.3 - add triple countdown, seperate the display
