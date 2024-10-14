@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from nicegui import ui
 import threading
 import time
@@ -5,7 +6,7 @@ import matplotlib.pyplot as plt
 import io
 import base64
 
-class TestCase:
+class TestCase(ABC):
     def __init__(self, case_id, images):
         self.case_id = case_id
         self.images = images  # List of image filenames
@@ -13,8 +14,19 @@ class TestCase:
     def __repr__(self):
         return f"TestCase(case_id={self.case_id}, images={self.images})"
 
+    @abstractmethod
     def display(self):
-        raise NotImplementedError("Subclasses should implement this!")
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def intro_display():
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def summary_display(temp_table):
+        pass
 
 class SingleCountdownTestCase(TestCase):
     def __init__(self, case_id, images, countdown, alert_time):
@@ -35,21 +47,22 @@ class SingleCountdownTestCase(TestCase):
         return f"SingleCountdownTestCase(case_id={self.case_id}, images={self.images}, countdown={self.countdown}, alert_time={self.alert_time})"
 
     def display(self):
-        ui.label(f"TestCase ID: {self.case_id}")
-        ui.label(f"Images: {', '.join(self.images)}")
-        self.label = ui.label(f"Countdown: {self.remaining} seconds")
-        self.elapsed_label = ui.label("")  # Label to display elapsed time
-        start_stop_button = ui.button('Start/Stop Countdown', on_click=self.toggle_countdown)
+        with ui.column().classes('items-center justify-center').style('height: 100vh; width: 100vw'):
+            ui.label(f"TestCase ID: {self.case_id}")
+            ui.label(f"Images: {', '.join(self.images)}")
+            self.label = ui.label(f"Countdown: {self.remaining} seconds")
+            self.elapsed_label = ui.label("")  # Label to display elapsed time
+            start_stop_button = ui.button('Start/Stop Countdown', on_click=self.toggle_countdown).classes('q-pa-md q-ma-md')
 
-        # Add a keyboard event listener for the spacebar
-        def on_key(event):
-            if event.key == ' ':
-                self.toggle_countdown()
+            # Add a keyboard event listener for the spacebar
+            def on_key(event):
+                if event.key == ' ':
+                    self.toggle_countdown()
 
-        ui.on('keydown', on_key)
+            ui.on('keydown', on_key)
 
-        # Set focus to the Start/Stop button to ensure key events are captured
-        ui.run_javascript(f'document.getElementById("{start_stop_button.id}").focus();')
+            # Set focus to the Start/Stop button to ensure key events are captured
+            ui.run_javascript(f'document.getElementById("{start_stop_button.id}").focus();')
 
     def toggle_countdown(self):
         if not self.started and not self.stopped:
@@ -89,88 +102,21 @@ class SingleCountdownTestCase(TestCase):
         if self.elapsed_label:
             self.elapsed_label.set_text("")
 
-class TestSuite:
-    def __init__(self, name):
-        self.name = name
-        self.test_cases = []
+    @staticmethod
+    def intro_display():
+        with ui.column().classes('items-center justify-center').style('height: 100vh; width: 100vw'):
+            ui.label('Introduction Page for Single Countdown Test Case')
+            ui.button('Next', on_click=lambda: ui.navigate.to('/test_case_0')).classes('q-pa-md q-ma-md')
+            ui.button('Back', on_click=lambda: ui.navigate.to('/')).classes('q-pa-md q-ma-md')
 
-    def add_test_case(self, test_case):
-        self.test_cases.append(test_case)
-
-    def __repr__(self):
-        return f"TestSuite(name={self.name}, test_cases={self.test_cases})"
-
-class App:
-    def __init__(self):
-        self.test_suites = []
-        self.testcase_cnt = 1
-        self.temp_table = []
-
-    def add_test_suite(self, test_suite):
-        self.test_suites.append(test_suite)
-
-    def run(self):
-        @ui.page('/')
-        def main_page():
-            with ui.row():
-                ui.label('Number of Test Cases:')
-                self.slider_label = ui.label(f'{self.testcase_cnt}')
-                ui.slider(min=1, max=10, value=self.testcase_cnt, on_change=self.update_testcase_cnt)
-
-            for test_suite in self.test_suites:
-                ui.button(test_suite.name, on_click=lambda ts=test_suite: self.start_test_suite(ts))
-
-        ui.run()
-
-    def update_testcase_cnt(self, event):
-        self.testcase_cnt = event.value
-        self.slider_label.set_text(f'{self.testcase_cnt}')
-        print(f"Updated testcase_cnt to: {self.testcase_cnt}")
-
-    def start_test_suite(self, test_suite):
-        print(f"Starting test suite with {self.testcase_cnt} test cases.")
-        self.temp_table = []  # Reset the temporary table
-        selected_cases = test_suite.test_cases[:self.testcase_cnt]
-        self.show_intro_page(selected_cases)
-        ui.navigate.to('/intro')
-
-    def show_intro_page(self, test_cases):
-        @ui.page('/intro')
-        def intro_page():
-            ui.label('Introduction Page')
-            ui.button('Next', on_click=lambda: self.show_test_case_pages(test_cases, 0))
-            ui.button('Back', on_click=lambda: ui.navigate.to('/'))
-
-    def show_test_case_pages(self, test_cases, index):
-        if index < len(test_cases):
-            @ui.page(f'/test_case_{index}')
-            def test_case_page():
-                test_cases[index].reset_countdown()  # Reset countdown before displaying
-                test_cases[index].display()
-                ui.button('Next', on_click=lambda: self.show_test_case_pages(test_cases, index + 1))
-                ui.button('Back', on_click=lambda: ui.navigate.to('/'))
-            ui.navigate.to(f'/test_case_{index}')
-        else:
-            self.show_summary_page()
-            ui.navigate.to('/summary')
-
-    def record_time(self, test_case):
-        if test_case.elapsed_time is not None:
-            self.temp_table.append({
-                'case_id': test_case.case_id,
-                'elapsed_time': test_case.elapsed_time,
-                'alert_time': test_case.alert_time
-            })
-            print(f"Recorded time for case {test_case.case_id}: {test_case.elapsed_time:.2f} seconds")
-
-    def show_summary_page(self):
-        @ui.page('/summary')
-        def summary_page():
-            ui.label('Summary Page')
-            if self.temp_table:
-                case_ids = [f"Case {record['case_id']}" for record in self.temp_table]
-                elapsed_times = [record['elapsed_time'] for record in self.temp_table]
-                alert_times = [record['alert_time'] for record in self.temp_table]
+    @staticmethod
+    def summary_display(temp_table):
+        with ui.column().classes('items-center justify-center').style('height: 100vh; width: 100vw'):
+            ui.label('Summary Page for Single Countdown Test Case')
+            if temp_table:
+                case_ids = [f"Case {record['case_id']}" for record in temp_table]
+                elapsed_times = [record['elapsed_time'] for record in temp_table]
+                alert_times = [record['alert_time'] for record in temp_table]
 
                 # Determine bar colors based on alert_time
                 colors = ['red' if elapsed > alert else 'blue' for elapsed, alert in zip(elapsed_times, alert_times)]
@@ -195,10 +141,97 @@ class App:
                 buf.close()
 
                 # Set default properties for the image
-                ui.image.default_props(add='width=800px height=400px')
+                ui.image.default_props(add='width=400px height=200px')
                 ui.image(f'data:image/png;base64,{img_base64}')
 
-            ui.button('Back', on_click=lambda: ui.navigate.to('/'))
+            ui.button('Back', on_click=lambda: ui.navigate.to('/')).classes('q-pa-md q-ma-md')
+
+class TestSuite:
+    def __init__(self, name):
+        self.name = name
+        self.test_cases = []
+
+    def add_test_case(self, test_case):
+        self.test_cases.append(test_case)
+
+    def __repr__(self):
+        return f"TestSuite(name={self.name}, test_cases={self.test_cases})"
+
+class App:
+    def __init__(self):
+        self.test_suites = []
+        self.testcase_cnt = 1
+        self.temp_table = []
+
+    def add_test_suite(self, test_suite):
+        self.test_suites.append(test_suite)
+
+    def run(self):
+        @ui.page('/')
+        def main_page():
+            with ui.column().classes('items-center justify-center').style('height: 100vh; width: 100vw'):
+                with ui.row().classes('items-center'):
+                    ui.label('Number of Test Cases:')
+                    self.slider_label = ui.label(f'{self.testcase_cnt}')
+                    ui.slider(min=1, max=10, value=self.testcase_cnt, on_change=self.update_testcase_cnt)
+
+                for test_suite in self.test_suites:
+                    ui.button(test_suite.name, on_click=lambda ts=test_suite: self.start_test_suite(ts)).classes('q-pa-md q-ma-md')
+
+        ui.run()
+
+    def update_testcase_cnt(self, event):
+        self.testcase_cnt = event.value
+        self.slider_label.set_text(f'{self.testcase_cnt}')
+        print(f"Updated testcase_cnt to: {self.testcase_cnt}")
+
+    def start_test_suite(self, test_suite):
+        print(f"Starting test suite with {self.testcase_cnt} test cases.")
+        self.temp_table = []  # Reset the temporary table
+        selected_cases = test_suite.test_cases[:self.testcase_cnt]
+        self.show_intro_page(selected_cases)
+        ui.navigate.to('/intro')
+
+    def show_intro_page(self, test_cases):
+        @ui.page('/intro')
+        def intro_page():
+            test_cases[0].intro_display()
+
+        # Predefine all test case pages
+        for index in range(len(test_cases)):
+            self.define_test_case_page(test_cases, index)
+
+    def define_test_case_page(self, test_cases, index):
+        @ui.page(f'/test_case_{index}')
+        def test_case_page():
+            with ui.column().classes('items-center justify-center').style('height: 100vh; width: 100vw'):
+                test_cases[index].reset_countdown()  # Reset countdown before displaying
+                test_cases[index].display()
+                ui.button('Next', on_click=lambda: self.show_test_case_pages(test_cases, index + 1)).classes('q-pa-md q-ma-md')
+                ui.button('Back', on_click=lambda: ui.navigate.to('/')).classes('q-pa-md q-ma-md')
+
+    def show_test_case_pages(self, test_cases, index):
+        if index < len(test_cases):
+            ui.navigate.to(f'/test_case_{index}')
+        else:
+            self.show_summary_page()
+            ui.navigate.to('/summary')
+
+    def record_time(self, test_case):
+        if test_case.elapsed_time is not None:
+            self.temp_table.append({
+                'case_id': test_case.case_id,
+                'elapsed_time': test_case.elapsed_time,
+                'alert_time': test_case.alert_time,
+                'case': test_case  # Store the test_case object itself
+            })
+            print(f"Recorded time for case {test_case.case_id}: {test_case.elapsed_time:.2f} seconds")
+
+    def show_summary_page(self):
+        @ui.page('/summary')
+        def summary_page():
+            if self.temp_table:
+                self.temp_table[0]['case'].summary_display(self.temp_table)
 
 # Example usage
 if __name__ in {"__main__", "__mp_main__"}:
